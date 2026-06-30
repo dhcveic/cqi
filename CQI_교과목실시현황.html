@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>교과목 CQI 실시 현황 | 대구보건대학교</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    select { appearance: auto; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useRef, useCallback } = React;
+
+    // ── Utils ─────────────────────────────────────────────────────────────────
+    const pct = (done, total) => total ? +(done / total * 100).toFixed(1) : 0;
+    const isDone = v => String(v == null ? "" : v).trim().toUpperCase() === "O";
+    const rateColor = r =>
+      r >= 80 ? "#1A9B5C" : r >= 50 ? "#D97706" : r > 0 ? "#D93025" : "#9CA3AF";
+
+    // ── Data transforms ───────────────────────────────────────────────────────
+    function buildDeptStats(rows) {
+      const m = {};
+      rows.forEach(r => {
+        const d = r["학과"] || "미분류";
+        if (!m[d]) m[d] = { total: 0, done: 0 };
+        m[d].total++;
+        if (isDone(r["평가여부"])) m[d].done++;
+      });
+      return Object.entries(m)
+        .map(([name, v]) => ({
+          name, total: v.total, done: v.done,
+          undone: v.total - v.done, rate: pct(v.done, v.total)
+        }))
+        .sort((a, b) => b.total - a.total);
+    }
+
+    function buildSubjects(rows) {
+      const m = {};
+      rows.forEach(r => {
+        const k = (r["학과"] || "") + "§" + (r["과목코드"] || "") + "§" + (r["학년"] || "");
+        if (!m[k]) m[k] = {
+          학과: r["학과"], 과목코드: r["과목코드"],
+          과목명: r["과목명"], 학년: r["학년"], sections: []
+        };
+        m[k].sections.push({ 반: r["수강반"], 교수: r["교수명"], 완료: isDone(r["평가여부"]) });
+      });
+      return Object.values(m).sort((a, b) =>
+        String(a.학년).localeCompare(String(b.학년)) || a.과목명.localeCompare(b.과목명)
+      );
+    }
+
+    // ── Upload Screen ─────────────────────────────────────────────────────────
+    function UploadScreen({ onFile }) {
+      const [drag, setDrag] = useState(false);
+      const inp = useRef();
+      const accept = f => f && onFile(f);
+
+      return (
+        <div style={{
+          minHeight: "100vh", display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          background: "#0F2B56", position: "relative", overflow: "hidden"
+        }}>
+          {[0,1,2,3,4,5,6,7,8,9].map(i => (
+            <div key={"v"+i} style={{
+              position: "absolute", left: (i*11)+"%", top: 0, bottom: 0,
+              width: 1, background: "rgba(255,255,255,.05)"
+            }} />
+          ))}
+          {[0,1,2,3,4,5,6,7].map(i => (
+            <div key={"h"+i} style={{
+              position: "absolute", top: (i*14)+"%", left: 0, right: 0,
+              height: 1, background: "rgba(255,255,255,.05)"
+            }} />
+          ))}
+
+          <div style={{ position: "relative", textAlign: "center", color: "white", marginBottom: 40 }}>
+            <div style={{
+              display: "inline-block", background: "rgba(255,255,255,.1)",
+              border: "1px solid rgba(255,255,255,.2)", borderRadius: 20,
+              padding: "4px 18px", fontSize: 12, letterSpacing: "1.5px", marginBottom: 20
+            }}>대구보건대학교 · 직업교육혁신센터</div>
+            <h1 style={{ margin: "0 0 10px", fontSize: 30, fontWeight: 800, letterSpacing: "-.5px" }}>
+              교과목 CQI 실시 현황
+            </h1>
+            <div style={{ fontSize: 15, opacity: .6 }}>2026학년도 1학기 · 학과별 실시 현황 관리 대시보드</div>
+          </div>
+
+          <div
+            onDrop={e => { e.preventDefault(); setDrag(false); accept(e.dataTransfer.files[0]); }}
+            onDragOver={e => { e.preventDefault(); setDrag(true); }}
+            onDragLeave={() => setDrag(false)}
+            onClick={() => inp.current.click()}
+            style={{
+              position: "relative", width: 420,
+              background: drag ? "#F0F9FF" : "white",
+              borderRadius: 20, padding: "44px 40px", textAlign: "center", cursor: "pointer",
+              boxShadow: drag
+                ? "0 0 0 3px #60A5FA, 0 24px 64px rgba(0,0,0,.4)"
+                : "0 24px 64px rgba(0,0,0,.3)",
+              border: "2px dashed " + (drag ? "#3B82F6" : "transparent"),
+              transition: "all .2s"
+            }}
+          >
+            <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
+            <p style={{ fontSize: 17, fontWeight: 700, color: "#0F2B56", margin: "0 0 8px" }}>
+              현황 파일을 여기에 드롭하세요
+            </p>
+            <p style={{ fontSize: 13, color: "#9CA3AF", margin: "0 0 28px" }}>
+              또는 클릭하여 .xlsx 파일 선택
+            </p>
+            <div style={{
+              background: "#0F2B56", color: "white",
+              padding: "12px 36px", borderRadius: 10, fontSize: 15, fontWeight: 700,
+              display: "inline-block"
+            }}>파일 선택</div>
+            <input
+              ref={inp} type="file" accept=".xlsx,.xls"
+              style={{ display: "none" }}
+              onChange={e => accept(e.target.files[0])}
+            />
+          </div>
+          <p style={{
+            position: "relative", color: "rgba(255,255,255,.4)",
+            fontSize: 12, marginTop: 20, textAlign: "center"
+          }}>
+            시스템에서 매일 다운로드한 현황 파일(.xlsx)을 업로드하면 자동 집계됩니다
+          </p>
+        </div>
+      );
+    }
+
+    // ── Dept Overview (전체 모드) ─────────────────────────────────────────────
+    function DeptOverview({ deptStats, onSelect }) {
+      const total = deptStats.reduce((s, d) => s + d.total, 0);
+      const done  = deptStats.reduce((s, d) => s + d.done,  0);
+      const overall = pct(done, total);
+
+      return (
+        <div>
+          <div style={{ marginBottom: 18 }}>
+            <h2 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700, color: "#0F2B56" }}>
+              전체 학과 현황
+            </h2>
+            <p style={{ margin: 0, fontSize: 13, color: "#6B7280" }}>
+              학과 카드를 클릭하면 교과목 상세 현황을 확인할 수 있습니다
+            </p>
+          </div>
+
+          <div style={{ background: "#F8FAFC", borderRadius: 12, padding: "16px 20px", marginBottom: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>전체 진행률</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: rateColor(overall) }}>{overall}%</span>
+            </div>
+            <div style={{ height: 10, background: "#E5E7EB", borderRadius: 5, overflow: "hidden" }}>
+              <div style={{
+                height: "100%", width: overall + "%",
+                background: "linear-gradient(90deg, #1A9B5C, #22D97A)",
+                borderRadius: 5, transition: "width .6s ease"
+              }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 12, color: "#9CA3AF" }}>
+              <span>완료 {done.toLocaleString()}개</span>
+              <span>미실시 {(total - done).toLocaleString()}개</span>
+            </div>
+          </div>
+
+          <div style={{
+            display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
+            gap: 10, overflowY: "auto", maxHeight: 440
+          }}>
+            {deptStats.map(d => (
+              <div
+                key={d.name}
+                onClick={() => onSelect(d.name)}
+                onMouseEnter={e => {
+                  e.currentTarget.style.borderColor = "#93C5FD";
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                  e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,.1)";
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.borderColor = "#E5E7EB";
+                  e.currentTarget.style.transform = "none";
+                  e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,.04)";
+                }}
+                style={{
+                  background: "white", border: "1px solid #E5E7EB", borderRadius: 10,
+                  padding: "12px 14px", cursor: "pointer", transition: "all .15s",
+                  boxShadow: "0 1px 3px rgba(0,0,0,.04)"
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#1E293B", marginBottom: 8, lineHeight: 1.4 }}>
+                  {d.name}
+                </div>
+                <div style={{ height: 4, background: "#F3F4F6", borderRadius: 2, overflow: "hidden", marginBottom: 8 }}>
+                  <div style={{
+                    height: "100%", width: d.rate + "%",
+                    background: rateColor(d.rate), borderRadius: 2,
+                    minWidth: d.rate > 0 ? 3 : 0
+                  }} />
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 18, fontWeight: 800, color: rateColor(d.rate) }}>{d.rate}%</span>
+                  <span style={{ fontSize: 11, color: "#9CA3AF" }}>{d.done}/{d.total}개</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // ── Course Table (학과 선택 모드) ─────────────────────────────────────────
+    function CourseTable({ subjects, selStat, dept, deptStats, onDeptChange, undoneOnly, onUndoneToggle }) {
+      const shown = undoneOnly
+        ? subjects.filter(s => s.sections.some(sec => !sec.완료))
+        : subjects;
+      const undoneCount = subjects.filter(s => s.sections.some(sec => !sec.완료)).length;
+
+      return (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{
+            display: "flex", justifyContent: "space-between",
+            alignItems: "flex-start", marginBottom: 16
+          }}>
+            <div>
+              <h2 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700, color: "#0F2B56" }}>
+                {dept} 교과목 현황
+              </h2>
+              {selStat && (
+                <p style={{ margin: 0, fontSize: 13, color: "#6B7280" }}>
+                  총 {selStat.total}개 강좌 ·
+                  <span style={{ color: "#1A9B5C", fontWeight: 600 }}> 완료 {selStat.done}개</span> ·
+                  <span style={{ color: "#D93025", fontWeight: 600 }}> 미실시 {selStat.undone}개</span> ·
+                  실시율 <strong style={{ color: rateColor(selStat.rate) }}>{selStat.rate}%</strong>
+                </p>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexShrink: 0, marginLeft: 12 }}>
+              <select
+                value={dept}
+                onChange={e => onDeptChange(e.target.value)}
+                style={{
+                  padding: "7px 12px", borderRadius: 8, border: "1px solid #E5E7EB",
+                  fontSize: 13, color: "#374151", cursor: "pointer", background: "white"
+                }}
+              >
+                <option value="전체">전체 학과</option>
+                {deptStats.map(d => <option key={d.name}>{d.name}</option>)}
+              </select>
+              <button
+                onClick={onUndoneToggle}
+                style={{
+                  padding: "7px 14px", borderRadius: 8, fontSize: 13, cursor: "pointer",
+                  fontWeight: undoneOnly ? 700 : 400,
+                  border: "1px solid " + (undoneOnly ? "#FCA5A5" : "#E5E7EB"),
+                  background: undoneOnly ? "#FEF2F2" : "white",
+                  color: undoneOnly ? "#D93025" : "#6B7280"
+                }}
+              >
+                🔴 미실시만 ({undoneCount})
+              </button>
+            </div>
+          </div>
+
+          <div style={{ overflowY: "auto", maxHeight: 530 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead style={{ position: "sticky", top: 0, background: "white", zIndex: 1 }}>
+                <tr style={{ borderBottom: "2px solid #E5E7EB" }}>
+                  {[
+                    { label: "과목명", w: "32%" },
+                    { label: "학년", w: "7%" },
+                    { label: "수강반 현황 (반 위에 마우스 올리면 교수명)", w: "46%" },
+                    { label: "결과", w: "15%" }
+                  ].map(h => (
+                    <th key={h.label} style={{
+                      padding: "9px 10px", textAlign: "left", width: h.w,
+                      fontSize: 12, fontWeight: 600, color: "#6B7280"
+                    }}>{h.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((subj, i) => {
+                  const sDone  = subj.sections.filter(s => s.완료).length;
+                  const sTotal = subj.sections.length;
+                  const all  = sDone === sTotal;
+                  const none = sDone === 0;
+                  return (
+                    <tr key={i} style={{
+                      borderBottom: "1px solid #F3F4F6",
+                      background: i % 2 === 0 ? "white" : "#FAFAFA"
+                    }}>
+                      <td style={{ padding: "9px 10px", color: "#111827", fontWeight: 500 }}>
+                        {subj.과목명}
+                      </td>
+                      <td style={{ padding: "9px 10px", color: "#6B7280" }}>{subj.학년}학년</td>
+                      <td style={{ padding: "9px 10px" }}>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                          {subj.sections.map((s, j) => (
+                            <span
+                              key={j}
+                              title={s.반 + "반 · " + s.교수}
+                              style={{
+                                padding: "2px 7px", borderRadius: 4, fontSize: 11,
+                                cursor: "default", userSelect: "none",
+                                background: s.완료 ? "#DCFCE7" : "#FEF2F2",
+                                color: s.완료 ? "#15803D" : "#B91C1C",
+                                border: "1px solid " + (s.완료 ? "#BBF7D0" : "#FECACA")
+                              }}
+                            >{s.반}</span>
+                          ))}
+                        </div>
+                      </td>
+                      <td style={{ padding: "9px 10px" }}>
+                        {all ? (
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#1A9B5C" }}>✓ 완료</span>
+                        ) : none ? (
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#D93025" }}>미실시</span>
+                        ) : (
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#D97706" }}>
+                            {sDone}/{sTotal} 부분
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {shown.length === 0 && (
+                  <tr>
+                    <td colSpan="4" style={{
+                      padding: "56px 0", textAlign: "center",
+                      color: "#9CA3AF", fontSize: 14
+                    }}>
+                      {undoneOnly ? "🎉 모든 과목이 완료되었습니다!" : "데이터가 없습니다"}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Root App ──────────────────────────────────────────────────────────────
+    function App() {
+      const [rows, setRows]         = useState(null);
+      const [dept, setDept]         = useState("전체");
+      const [upTime, setUpTime]     = useState(null);
+      const [undoneOnly, setUndoneOnly] = useState(false);
+
+      const load = useCallback(function(file) {
+        const r = new FileReader();
+        r.onload = function(e) {
+          const data = new Uint8Array(e.target.result);
+          const wb   = XLSX.read(data, { type: "array" });
+          const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" });
+          setRows(json);
+          setUpTime(new Date());
+          setDept("전체");
+          setUndoneOnly(false);
+        };
+        r.readAsArrayBuffer(file);
+      }, []);
+
+      if (!rows) return <UploadScreen onFile={load} />;
+
+      const deptStats = buildDeptStats(rows);
+      const total = rows.length;
+      const done  = rows.filter(r => isDone(r["평가여부"])).length;
+      const rate  = pct(done, total);
+
+      const deptRows = dept === "전체" ? rows : rows.filter(r => r["학과"] === dept);
+      const subjects  = buildSubjects(deptRows);
+      const selStat   = deptStats.find(d => d.name === dept);
+
+      const fmtDate = function(d) {
+        const days = ["일","월","화","수","목","금","토"];
+        return d.getFullYear() + ". " + (d.getMonth()+1) + ". " + d.getDate() + ". (" + days[d.getDay()] + ")";
+      };
+
+      const cards = [
+        { label: "총 강좌 수",  val: total.toLocaleString()+"개",       sub: deptStats.length+"개 학과", c: "#0F2B56", bg: "#EBF4FE" },
+        { label: "CQI 완료",   val: done.toLocaleString()+"개",         sub: "전체의 "+rate+"%",         c: "#1A9B5C", bg: "#F0FDF4" },
+        { label: "미실시 강좌", val: (total-done).toLocaleString()+"개", sub: "입력 대기중",               c: "#D93025", bg: "#FEF2F2" },
+        { label: "전체 실시율", val: rate+"%",                           sub: done+" / "+total,           c: rateColor(rate), bg: "#FFFBEB" }
+      ];
+
+      return (
+        <div style={{ minHeight: "100vh", background: "#EEF2F7" }}>
+
+          {/* Header */}
+          <header style={{
+            background: "#0F2B56", color: "white", padding: "14px 28px",
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            boxShadow: "0 2px 8px rgba(0,0,0,.2)"
+          }}>
+            <div>
+              <div style={{ fontSize: 11, opacity: .55, letterSpacing: ".8px", marginBottom: 4 }}>
+                대구보건대학교 · 직업교육혁신센터
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-.3px" }}>
+                교과목 CQI 실시 현황 · 2026학년도 1학기
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              {upTime && (
+                <div style={{ fontSize: 12, opacity: .65 }}>{fmtDate(upTime)} 업로드</div>
+              )}
+              <button
+                onClick={() => setRows(null)}
+                style={{
+                  padding: "7px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13,
+                  border: "1px solid rgba(255,255,255,.3)",
+                  background: "rgba(255,255,255,.1)", color: "white", fontWeight: 500
+                }}
+              >↑ 파일 교체</button>
+            </div>
+          </header>
+
+          <div style={{ padding: "22px 28px", maxWidth: 1500, margin: "0 auto" }}>
+
+            {/* Summary cards */}
+            <div style={{
+              display: "grid", gridTemplateColumns: "repeat(4,1fr)",
+              gap: 14, marginBottom: 22
+            }}>
+              {cards.map((c, i) => (
+                <div key={i} style={{
+                  background: c.bg, border: "1px solid "+c.c+"20",
+                  borderRadius: 14, padding: "18px 22px"
+                }}>
+                  <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 500, marginBottom: 6 }}>{c.label}</div>
+                  <div style={{ fontSize: 30, fontWeight: 900, color: c.c, lineHeight: 1, letterSpacing: "-1px" }}>{c.val}</div>
+                  <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 6 }}>{c.sub}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Main 2-col */}
+            <div style={{ display: "grid", gridTemplateColumns: "310px 1fr", gap: 18, alignItems: "start" }}>
+
+              {/* Left: dept sidebar */}
+              <div style={{
+                background: "white", borderRadius: 14, padding: "18px 14px",
+                boxShadow: "0 1px 4px rgba(0,0,0,.06)"
+              }}>
+                <div style={{
+                  display: "flex", justifyContent: "space-between",
+                  alignItems: "center", marginBottom: 14
+                }}>
+                  <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0F2B56" }}>
+                    학과별 실시율
+                  </h2>
+                  {dept !== "전체" && (
+                    <button
+                      onClick={() => setDept("전체")}
+                      style={{
+                        fontSize: 12, color: "#6B7280", background: "none",
+                        border: "1px solid #E5E7EB", borderRadius: 6,
+                        padding: "3px 10px", cursor: "pointer"
+                      }}
+                    >전체 보기</button>
+                  )}
+                </div>
+                <div style={{ maxHeight: 580, overflowY: "auto" }}>
+                  {deptStats.map(d => (
+                    <div
+                      key={d.name}
+                      onClick={() => setDept(dept === d.name ? "전체" : d.name)}
+                      style={{
+                        padding: "8px 10px", borderRadius: 8, marginBottom: 3, cursor: "pointer",
+                        background: dept === d.name ? "#EBF4FE" : "transparent",
+                        border: "1px solid " + (dept === d.name ? "#93C5FD" : "transparent"),
+                        transition: "all .12s"
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                        <span style={{
+                          fontSize: 12, color: "#1E293B", lineHeight: 1.3,
+                          fontWeight: dept === d.name ? 600 : 400
+                        }}>{d.name}</span>
+                        <span style={{
+                          fontSize: 12, fontWeight: 700, marginLeft: 6,
+                          whiteSpace: "nowrap", color: rateColor(d.rate)
+                        }}>{d.rate}%</span>
+                      </div>
+                      <div style={{ height: 4, background: "#F3F4F6", borderRadius: 2, overflow: "hidden" }}>
+                        <div style={{
+                          height: "100%", width: d.rate + "%",
+                          minWidth: d.rate > 0 ? 3 : 0,
+                          background: rateColor(d.rate), borderRadius: 2
+                        }} />
+                      </div>
+                      <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 3 }}>
+                        완료 {d.done} / {d.total}개
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Right: overview or course table */}
+              <div style={{
+                background: "white", borderRadius: 14, padding: "20px 22px",
+                boxShadow: "0 1px 4px rgba(0,0,0,.06)", minHeight: 500
+              }}>
+                {dept === "전체" ? (
+                  <DeptOverview deptStats={deptStats} onSelect={setDept} />
+                ) : (
+                  <CourseTable
+                    subjects={subjects}
+                    selStat={selStat}
+                    dept={dept}
+                    deptStats={deptStats}
+                    onDeptChange={v => { setDept(v); setUndoneOnly(false); }}
+                    undoneOnly={undoneOnly}
+                    onUndoneToggle={() => setUndoneOnly(v => !v)}
+                  />
+                )}
+              </div>
+
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
