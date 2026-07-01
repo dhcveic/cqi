@@ -101,6 +101,20 @@
   .ov-rate { font-size: 18px; font-weight: 800; }
   .ov-cnt { font-size: 11px; color: #9CA3AF; }
 
+  .prof-bar { margin-bottom: 14px; }
+  .prof-bar-label { font-size: 11px; color: #9CA3AF; font-weight: 600; letter-spacing: .5px; margin-bottom: 7px; }
+  .prof-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .prof-chip {
+    padding: 5px 12px; border-radius: 20px; font-size: 12px; cursor: pointer;
+    border: 1px solid #E5E7EB; background: #fff; color: #374151;
+    transition: all .12s; white-space: nowrap;
+  }
+  .prof-chip:hover { border-color: #93C5FD; background: #EFF6FF; }
+  .prof-chip.active { background: #0F2B56; border-color: #0F2B56; color: #fff; font-weight: 700; }
+  .prof-chip .p-undone { font-size: 10px; margin-left: 3px; opacity: .8; }
+  .prof-chip.has-undone { border-color: #FCA5A5; }
+  .prof-chip.has-undone.active { background: #0F2B56; border-color: #0F2B56; }
+
   .state { padding: 80px 20px; text-align: center; color: #6B7280; }
   .state .spinner { width: 40px; height: 40px; border: 4px solid #E5E7EB; border-top-color: #0F2B56; border-radius: 50%; margin: 0 auto 20px; animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -170,6 +184,7 @@ let TRACK_LOADED = {};      // { 트랙명: true/false } 로딩 성공 여부
 let TRACK_STAMP = {};       // { 트랙명: 마지막 수정시각 문자열 }
 let curTrack = "전체";
 let curDept = "전체";
+let curProf = "";           // 선택된 교수명 ("" = 전체)
 let undoneOnly = false;
 
 const isDone = v => String(v||"").trim().toUpperCase() === "O";
@@ -284,9 +299,27 @@ function deptStats() {
   })).sort((a,b) => b.total-a.total);
 }
 
-function subjectsOf(dept) {
+function profsOfDept(dept) {
   const base = trackFilteredData();
   const rows = dept === "전체" ? base : base.filter(r => r["학과"] === dept);
+  // 교수명별 완료/미완료 수 집계
+  const m = {};
+  rows.forEach(r => {
+    const p = r["교수명"] || "미정";
+    if (!m[p]) m[p] = { total:0, undone:0 };
+    m[p].total++;
+    if (!isDone(r["평가여부"])) m[p].undone++;
+  });
+  return Object.entries(m)
+    .map(([name, v]) => ({ name, total:v.total, undone:v.undone }))
+    .sort((a,b) => a.name.localeCompare(b.name));
+}
+
+function subjectsOf(dept, profFilter) {
+  const base = trackFilteredData();
+  let rows = dept === "전체" ? base : base.filter(r => r["학과"] === dept);
+  // 교수 필터가 있으면 해당 교수 행만
+  if (profFilter) rows = rows.filter(r => r["교수명"] === profFilter);
   const m = {};
   rows.forEach(r => {
     const k = (r["학과"]||"")+"§"+(r["과목코드"]||"")+"§"+(r["학년"]||"")+"§"+(r["과목명"]||"");
@@ -335,11 +368,47 @@ function renderMain() {
   const el = document.getElementById("mainPanel");
   if (curDept === "전체") { renderOverview(el); return; }
 
-  const subjects = subjectsOf(curDept);
+  // 교수 목록
+  const profs = profsOfDept(curDept);
+  const profChips = profs.map(p => {
+    const isActive = curProf === p.name;
+    const hasUndone = p.undone > 0;
+    return '<div class="prof-chip'+(isActive?" active":"")+(hasUndone&&!isActive?" has-undone":"")+
+      '" onclick="selectProf(\''+p.name.replace(/'/g,"\\'")+'\')">'+
+      p.name +
+      (hasUndone ? '<span class="p-undone">미실시 '+p.undone+'</span>' : '') +
+      '</div>';
+  }).join("");
+  const profBarHtml =
+    '<div class="prof-bar">'+
+    '<div class="prof-bar-label">👤 교수 · 강사별 필터</div>'+
+    '<div class="prof-chips">'+
+      '<div class="prof-chip'+(curProf===""?" active":"")+'" onclick="selectProf(\'\')">전체</div>'+
+      profChips+
+    '</div></div>';
+
+  // 과목 목록 (교수 필터 적용)
+  const subjects = subjectsOf(curDept, curProf);
   const ds = deptStats().find(d => d.name === curDept);
+
+  // 요약 통계: 교수 필터 적용 기준
+  const base = trackFilteredData();
+  const deptRows = base.filter(r => r["학과"] === curDept);
+  const profRows = curProf ? deptRows.filter(r => r["교수명"] === curProf) : deptRows;
+  const profTotal = profRows.length;
+  const profDone  = profRows.filter(r => isDone(r["평가여부"])).length;
+  const profUndone = profTotal - profDone;
+  const profRate  = pct(profDone, profTotal);
+
   const shown = undoneOnly ? subjects.filter(s => s.sections.some(x => !x.done)) : subjects;
-  const undoneCount = subjects.filter(s => s.sections.some(x => !x.done)).length;
+  const undoneSubjectCount = subjects.filter(s => s.sections.some(x => !x.done)).length;
   const ds_opts = deptStats().map(d => '<option '+(d.name===curDept?"selected":"")+'>'+d.name+'</option>').join("");
+
+  const metaText = curProf
+    ? curProf+' · '+profTotal+'개 강좌 · <span style="color:#1A9B5C;font-weight:600;">완료 '+profDone+'개</span> · '+
+      '<span style="color:#D93025;font-weight:600;">미실시 '+profUndone+'개</span> · 실시율 <strong style="color:'+rateColor(profRate)+';">'+profRate+'%</strong>'
+    : '총 '+ds.total+'개 강좌 · <span style="color:#1A9B5C;font-weight:600;">완료 '+ds.done+'개</span> · '+
+      '<span style="color:#D93025;font-weight:600;">미실시 '+ds.undone+'개</span> · 실시율 <strong style="color:'+rateColor(ds.rate)+';">'+ds.rate+'%</strong>';
 
   let rows = shown.map(subj => {
     const sDone = subj.sections.filter(s=>s.done).length, sTotal = subj.sections.length;
@@ -358,13 +427,13 @@ function renderMain() {
   el.innerHTML =
     '<div class="main-head"><div>'+
       '<h2>'+curDept+' 교과목 현황</h2>'+
-      '<div class="meta">총 '+ds.total+'개 강좌 · <span style="color:#1A9B5C;font-weight:600;">완료 '+ds.done+'개</span> · '+
-      '<span style="color:#D93025;font-weight:600;">미실시 '+ds.undone+'개</span> · 실시율 <strong style="color:'+rateColor(ds.rate)+';">'+ds.rate+'%</strong></div>'+
+      '<div class="meta">'+metaText+'</div>'+
     '</div><div class="controls">'+
       '<select onchange="selectDept(this.value)"><option value="전체">전체 학과</option>'+ds_opts+'</select>'+
-      '<button class="btn '+(undoneOnly?"active":"")+'" onclick="toggleUndone()">🔴 미실시만 ('+undoneCount+')</button>'+
+      '<button class="btn '+(undoneOnly?"active":"")+'" onclick="toggleUndone()">🔴 미실시만 ('+undoneSubjectCount+')</button>'+
       '<button class="btn btn-print" onclick="printDept()">🖨️ 미실시 인쇄</button>'+
     '</div></div>'+
+    profBarHtml +
     '<div class="table-scroll"><table><thead><tr>'+
     '<th style="width:30%;">과목명</th><th style="width:8%;">학년</th>'+
     '<th style="width:47%;">수강반 · 교수 (초록=완료 / 빨강=미실시)</th><th style="width:15%;">결과</th>'+
@@ -394,10 +463,17 @@ function renderOverview(el) {
 
 function printDept() {
   if (curDept === "전체") { alert("학과를 먼저 선택해 주세요."); return; }
-  const subjects = subjectsOf(curDept);
-  const ds = deptStats().find(d => d.name === curDept);
+  const subjects = subjectsOf(curDept, curProf);
+  const base = trackFilteredData();
+  const deptRows = base.filter(r => r["학과"] === curDept);
+  const profRows = curProf ? deptRows.filter(r => r["교수명"] === curProf) : deptRows;
+  const profTotal = profRows.length;
+  const profDone  = profRows.filter(r => isDone(r["평가여부"])).length;
+  const profUndone = profTotal - profDone;
+  const profRate  = pct(profDone, profTotal);
+  const updateInfo = document.getElementById("updateInfo").innerHTML.replace(/<[^>]+>/g,"").replace("최종 업데이트","").trim();
+  const titleSuffix = curProf ? " · " + curProf : "";
   const undoneSubjects = subjects.filter(s => s.sections.some(x => !x.done));
-  const updateInfo = document.getElementById("updateInfo").textContent.replace("최종 업데이트","").trim();
 
   let rows = undoneSubjects.map(subj => {
     const undoneSecs = subj.sections.filter(s => !s.done);
@@ -407,18 +483,19 @@ function printDept() {
   if (!undoneSubjects.length) rows = '<tr><td colspan="4" style="text-align:center;padding:30px;">미실시 과목이 없습니다.</td></tr>';
 
   document.getElementById("printArea").innerHTML =
-    '<div class="pr-head"><div class="pr-title">'+curDept+' 교과목 CQI 미실시 현황</div>'+
+    '<div class="pr-head"><div class="pr-title">'+curDept+titleSuffix+' 교과목 CQI 미실시 현황</div>'+
     '<div class="pr-sub">대구보건대학교 직업교육혁신센터 · '+(curTrack==="전체"?"전체 과정":curTrack)+' · 2026학년도 1학기 · 최종 업데이트 '+updateInfo+'</div></div>'+
-    '<div class="pr-summary">총 '+ds.total+'개 강좌 중 <strong style="color:#D93025;">미실시 '+ds.undone+'개</strong> '+
-    '(실시율 '+ds.rate+'%) · 아래는 미실시 분반 목록입니다.</div>'+
+    '<div class="pr-summary">'+profTotal+'개 강좌 중 <strong style="color:#D93025;">미실시 '+profUndone+'개</strong> '+
+    '(실시율 '+profRate+'%) · 아래는 미실시 분반 목록입니다.</div>'+
     '<table><thead><tr><th style="width:34%;">과목명</th><th style="width:10%;">학년</th>'+
     '<th style="width:46%;">미실시 분반 · 교수</th><th style="width:10%;">미실시</th></tr></thead><tbody>'+rows+'</tbody></table>';
 
   window.print();
 }
 
-function selectTrack(t) { curTrack = t; curDept = "전체"; undoneOnly = false; buildLayout(); render(); }
-function selectDept(d) { curDept = (d === curDept) ? "전체" : d; undoneOnly = false; render(); }
+function selectTrack(t) { curTrack = t; curDept = "전체"; curProf = ""; undoneOnly = false; buildLayout(); render(); }
+function selectDept(d) { curDept = (d === curDept) ? "전체" : d; curProf = ""; undoneOnly = false; render(); }
+function selectProf(p) { curProf = (p === curProf) ? "" : p; undoneOnly = false; renderMain(); }
 function toggleUndone() { undoneOnly = !undoneOnly; renderMain(); }
 function render() { renderCards(); renderSidebar(); renderMain(); }
 
