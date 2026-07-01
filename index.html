@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>교과목 CQI 실시 현황 | 대구보건대학교 직업교육혁신센터</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, 'Malgun Gothic', sans-serif; background: #EEF2F7; color: #1E293B; }
+  ::-webkit-scrollbar { width: 7px; height: 7px; }
+  ::-webkit-scrollbar-track { background: #f1f5f9; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+  header {
+    background: #0F2B56; color: #fff; padding: 16px 28px;
+    display: flex; justify-content: space-between; align-items: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,.2); flex-wrap: wrap; gap: 10px;
+  }
+  .h-sub { font-size: 11px; opacity: .55; letter-spacing: .8px; margin-bottom: 4px; }
+  .h-title { font-size: 18px; font-weight: 800; letter-spacing: -.3px; }
+  .h-right { display: flex; align-items: center; gap: 14px; }
+  .h-date { font-size: 12px; opacity: .7; text-align: right; line-height: 1.5; }
+  .h-date strong { font-size: 13px; opacity: 1; }
+  .btn-refresh {
+    padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
+    border: 1px solid rgba(255,255,255,.3); background: rgba(255,255,255,.1); color: #fff; font-weight: 500;
+  }
+  .btn-refresh:hover { background: rgba(255,255,255,.2); }
+
+  .notice {
+    background: #FEF9E7; border-bottom: 1px solid #F6E5A6; color: #8A6D0B;
+    font-size: 12.5px; padding: 9px 28px; text-align: center;
+  }
+  .wrap { padding: 22px 28px; max-width: 1500px; margin: 0 auto; }
+
+  .track-tabs { display: flex; gap: 6px; margin-bottom: 18px; }
+  .track-tab {
+    padding: 9px 18px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer;
+    border: 1px solid #E5E7EB; background: #fff; color: #6B7280; transition: all .12s;
+  }
+  .track-tab:hover { border-color: #93C5FD; }
+  .track-tab.active { background: #0F2B56; border-color: #0F2B56; color: #fff; }
+  .track-tab .t-cnt { font-weight: 400; opacity: .75; margin-left: 4px; }
+
+  .cards { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 22px; }
+  .card { border-radius: 14px; padding: 18px 22px; border: 1px solid; }
+  .card .c-label { font-size: 12px; color: #6B7280; font-weight: 500; margin-bottom: 6px; }
+  .card .c-val { font-size: 30px; font-weight: 900; line-height: 1; letter-spacing: -1px; }
+  .card .c-sub { font-size: 12px; color: #9CA3AF; margin-top: 6px; }
+
+  .layout { display: grid; grid-template-columns: 300px 1fr; gap: 18px; align-items: start; }
+  .panel { background: #fff; border-radius: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .side { padding: 18px 14px; }
+  .side h2 { font-size: 14px; font-weight: 700; color: #0F2B56; margin-bottom: 14px; }
+  .dept-list { max-height: 620px; overflow-y: auto; }
+  .dept-item { padding: 8px 10px; border-radius: 8px; margin-bottom: 3px; cursor: pointer; border: 1px solid transparent; transition: all .12s; }
+  .dept-item:hover { background: #F1F5F9; }
+  .dept-item.active { background: #EBF4FE; border-color: #93C5FD; }
+  .dept-row1 { display: flex; justify-content: space-between; margin-bottom: 5px; }
+  .dept-name { font-size: 12px; color: #1E293B; line-height: 1.3; }
+  .dept-item.active .dept-name { font-weight: 600; }
+  .dept-rate { font-size: 12px; font-weight: 700; margin-left: 6px; white-space: nowrap; }
+  .bar { height: 4px; background: #F3F4F6; border-radius: 2px; overflow: hidden; }
+  .bar > div { height: 100%; border-radius: 2px; }
+  .dept-cnt { font-size: 11px; color: #9CA3AF; margin-top: 3px; }
+
+  .main { padding: 20px 22px; min-height: 520px; }
+  .main-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+  .main-head h2 { font-size: 15px; font-weight: 700; color: #0F2B56; margin-bottom: 4px; }
+  .main-head .meta { font-size: 13px; color: #6B7280; }
+  .controls { display: flex; gap: 8px; flex-shrink: 0; }
+  select, button { font-family: inherit; }
+  select { padding: 7px 12px; border-radius: 8px; border: 1px solid #E5E7EB; font-size: 13px; color: #374151; cursor: pointer; background: #fff; }
+  .btn { padding: 7px 14px; border-radius: 8px; font-size: 13px; cursor: pointer; border: 1px solid #E5E7EB; background: #fff; color: #6B7280; }
+  .btn.active { font-weight: 700; border-color: #FCA5A5; background: #FEF2F2; color: #D93025; }
+  .btn-print { border-color: #93C5FD; background: #EFF6FF; color: #1D4ED8; font-weight: 600; }
+  .btn-print:hover { background: #DBEAFE; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { position: sticky; top: 0; background: #fff; padding: 9px 10px; text-align: left; font-size: 12px; font-weight: 600; color: #6B7280; border-bottom: 2px solid #E5E7EB; z-index: 1; }
+  tbody td { padding: 9px 10px; border-bottom: 1px solid #F3F4F6; }
+  tbody tr:nth-child(even) { background: #FAFAFA; }
+  .subj-name { color: #111827; font-weight: 500; }
+  .tag { padding: 2px 7px; border-radius: 4px; font-size: 11px; user-select: none; display: inline-block; }
+  .tag.done { background: #DCFCE7; color: #15803D; border: 1px solid #BBF7D0; }
+  .tag.undone { background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; }
+  .tags-wrap { display: flex; flex-wrap: wrap; gap: 3px; }
+  .res-done { color: #1A9B5C; font-weight: 700; font-size: 12px; }
+  .res-undone { color: #D93025; font-weight: 700; font-size: 12px; }
+  .res-part { color: #D97706; font-weight: 700; font-size: 12px; }
+  .table-scroll { overflow-y: auto; max-height: 560px; }
+  .empty { padding: 56px 0; text-align: center; color: #9CA3AF; font-size: 14px; }
+
+  .overview-prog { background: #F8FAFC; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; }
+  .ov-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-height: 460px; overflow-y: auto; }
+  .ov-card { background: #fff; border: 1px solid #E5E7EB; border-radius: 10px; padding: 12px 14px; cursor: pointer; transition: all .15s; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+  .ov-card:hover { border-color: #93C5FD; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.1); }
+  .ov-name { font-size: 12px; font-weight: 600; color: #1E293B; margin-bottom: 8px; line-height: 1.4; }
+  .ov-foot { display: flex; justify-content: space-between; align-items: center; }
+  .ov-rate { font-size: 18px; font-weight: 800; }
+  .ov-cnt { font-size: 11px; color: #9CA3AF; }
+
+  .state { padding: 80px 20px; text-align: center; color: #6B7280; }
+  .state .spinner { width: 40px; height: 40px; border: 4px solid #E5E7EB; border-top-color: #0F2B56; border-radius: 50%; margin: 0 auto 20px; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .state h3 { font-size: 16px; color: #374151; margin-bottom: 8px; }
+  .state p { font-size: 13px; line-height: 1.6; }
+  .state code { background: #F3F4F6; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+
+  #printArea { display: none; }
+  @media print {
+    body { background: #fff; }
+    header, .notice, .wrap { display: none !important; }
+    #printArea { display: block !important; }
+    .pr-head { text-align: center; margin-bottom: 6px; }
+    .pr-title { font-size: 20px; font-weight: 800; color: #000; }
+    .pr-sub { font-size: 12px; color: #555; margin-top: 4px; }
+    .pr-summary { font-size: 13px; margin: 14px 0; padding: 10px 14px; border: 1px solid #ccc; border-radius: 6px; }
+    .pr-summary strong { font-size: 15px; }
+    table { font-size: 11px; }
+    thead th { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; border-bottom: 1px solid #999; }
+    .tag { border: 1px solid #999 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .tag.undone { background: #fff !important; }
+    tbody tr { break-inside: avoid; }
+    @page { margin: 14mm; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="h-sub">대구보건대학교 · 직업교육혁신센터</div>
+    <div class="h-title">교과목 CQI 실시 현황 · 2026학년도 1학기</div>
+  </div>
+  <div class="h-right">
+    <div class="h-date" id="updateInfo">데이터 불러오는 중…</div>
+    <button class="btn-refresh" onclick="loadData()">↻ 새로고침</button>
+  </div>
+</header>
+
+<div class="notice">
+  📌 본 현황은 직업교육혁신센터에서 실시간으로 업데이트합니다 (일반과정 · 전공심화 · 대학원). 최신 현황은 우측 상단 <b>↻ 새로고침</b> 버튼을 누르거나 페이지를 새로고침(F5)하면 반영됩니다.
+</div>
+
+<div class="wrap" id="wrap">
+  <div class="state"><div class="spinner"></div><h3>현황 데이터를 불러오는 중입니다</h3><p>잠시만 기다려 주세요.</p></div>
+</div>
+
+<div id="printArea"></div>
+
+<script>
+// ─────────────────────────────────────────────────────────────
+//  데이터 파일 위치: 같은 폴더의 아래 3개 파일을 자동으로 읽습니다.
+//   - data.xlsx          → 일반과정 (기존 학부 정규과정)
+//   - data_전공심화.xlsx   → 전공심화과정
+//   - data_대학원.xlsx     → 대학원과정
+//  매일 다운로드한 엑셀을 위 이름 그대로 덮어쓰기만 하면 자동 반영됩니다.
+//  파일 1개만 갱신해도 되고, 해당 과정에 새 강좌가 없으면 안 올려도 됩니다(이전 파일 유지).
+// ─────────────────────────────────────────────────────────────
+const DATA_FILES = [
+  { file: "data.xlsx",          track: "일반과정" },
+  { file: "data_전공심화.xlsx",   track: "전공심화" },
+  { file: "data_대학원.xlsx",     track: "대학원" }
+];
+
+let DATA = [];
+let TRACK_LOADED = {};      // { 트랙명: true/false } 로딩 성공 여부
+let TRACK_STAMP = {};       // { 트랙명: 마지막 수정시각 문자열 }
+let curTrack = "전체";
+let curDept = "전체";
+let undoneOnly = false;
+
+const isDone = v => String(v||"").trim().toUpperCase() === "O";
+const pct = (d,t) => t ? +(d/t*100).toFixed(1) : 0;
+const rateColor = r => r>=80 ? "#1A9B5C" : r>=50 ? "#D97706" : r>0 ? "#D93025" : "#9CA3AF";
+
+async function loadData() {
+  const wrap = document.getElementById("wrap");
+  document.getElementById("updateInfo").textContent = "데이터 불러오는 중…";
+  wrap.innerHTML = '<div class="state"><div class="spinner"></div><h3>현황 데이터를 불러오는 중입니다</h3><p>잠시만 기다려 주세요.</p></div>';
+
+  DATA = [];
+  TRACK_LOADED = {};
+  TRACK_STAMP = {};
+  const failedTracks = [];
+  let latestStamp = null;
+
+  for (const { file, track } of DATA_FILES) {
+    try {
+      const res = await fetch(file + "?t=" + Date.now());
+      if (!res.ok) throw new Error(String(res.status));
+      const buf = await res.arrayBuffer();
+      const wb = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: true });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+      rows.forEach(r => {
+        DATA.push({
+          과정: track,
+          학과: String(r["학과"] != null ? r["학과"] : "미분류").trim() || "미분류",
+          전공: String(r["전공"] != null ? r["전공"] : "").trim(),
+          학년: String(r["학년"] != null ? r["학년"] : "").trim(),
+          과목코드: String(r["과목코드"] != null ? r["과목코드"] : "").trim(),
+          과목명: String(r["과목명"] != null ? r["과목명"] : "").trim(),
+          수강반: String(r["수강반"] != null ? r["수강반"] : "").trim(),
+          교수명: String(r["교수명"] != null ? r["교수명"] : "").trim(),
+          평가여부: String(r["평가여부"] != null ? r["평가여부"] : "").trim().toUpperCase()
+        });
+      });
+
+      TRACK_LOADED[track] = true;
+      const lastMod = res.headers.get("last-modified");
+      const d = lastMod ? new Date(lastMod) : new Date();
+      TRACK_STAMP[track] = fmtDateTime(d);
+      if (!latestStamp || d > latestStamp) latestStamp = d;
+    } catch (e) {
+      TRACK_LOADED[track] = false;
+      failedTracks.push(track);
+    }
+  }
+
+  if (DATA.length === 0) {
+    document.getElementById("updateInfo").textContent = "불러오기 실패";
+    wrap.innerHTML = '<div class="state">' +
+      '<h3 style="color:#D93025;">⚠ 데이터를 불러올 수 없습니다</h3>' +
+      '<p>저장소에 <code>data.xlsx</code>, <code>data_전공심화.xlsx</code>, <code>data_대학원.xlsx</code> 파일이 있는지 확인해 주세요.</p></div>';
+    return;
+  }
+
+  let info = "최종 업데이트<br><strong>" + fmtDateTime(latestStamp) + "</strong>";
+  if (failedTracks.length) info += "<br><span style='color:#FCA5A5;'>⚠ " + failedTracks.join("·") + " 파일 없음</span>";
+  document.getElementById("updateInfo").innerHTML = info;
+
+  curTrack = "전체"; curDept = "전체"; undoneOnly = false;
+  buildLayout();
+  render();
+}
+
+function fmtDateTime(d) {
+  const days = ["일","월","화","수","목","금","토"];
+  const yy = d.getFullYear(), mm = d.getMonth()+1, dd = d.getDate();
+  let h = d.getHours(); const min = String(d.getMinutes()).padStart(2,"0");
+  const ap = h < 12 ? "오전" : "오후"; h = h % 12; if (h === 0) h = 12;
+  return yy + ". " + mm + ". " + dd + ". (" + days[d.getDay()] + ") " + ap + " " + h + ":" + min;
+}
+
+function trackFilteredData() {
+  return curTrack === "전체" ? DATA : DATA.filter(r => r.과정 === curTrack);
+}
+
+function buildLayout() {
+  const tracks = ["전체", "일반과정", "전공심화", "대학원"];
+  const tabsHtml = tracks.map(t => {
+    const cnt = t === "전체" ? DATA.length : DATA.filter(r => r.과정 === t).length;
+    return '<div class="track-tab '+(curTrack===t?"active":"")+'" onclick="selectTrack(\''+t+'\')">'+t+'<span class="t-cnt">'+cnt+'</span></div>';
+  }).join("");
+
+  document.getElementById("wrap").innerHTML =
+    '<div class="track-tabs">' + tabsHtml + '</div>' +
+    '<div class="cards" id="cards"></div>' +
+    '<div class="layout">' +
+    '<div class="panel side">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
+      '<h2 style="margin:0;">학과별 실시율</h2>' +
+      '<button class="btn" id="btnAll" style="display:none;font-size:12px;padding:3px 10px;" onclick="selectDept(\'전체\')">전체 보기</button></div>' +
+      '<div class="dept-list" id="deptList"></div>' +
+    '</div>' +
+    '<div class="panel main" id="mainPanel"></div>' +
+    '</div>';
+}
+
+function deptStats() {
+  const m = {};
+  trackFilteredData().forEach(r => {
+    const d = r["학과"] || "미분류";
+    if (!m[d]) m[d] = { total:0, done:0 };
+    m[d].total++;
+    if (isDone(r["평가여부"])) m[d].done++;
+  });
+  return Object.entries(m).map(([name,v]) => ({
+    name, total:v.total, done:v.done, undone:v.total-v.done, rate:pct(v.done,v.total)
+  })).sort((a,b) => b.total-a.total);
+}
+
+function subjectsOf(dept) {
+  const base = trackFilteredData();
+  const rows = dept === "전체" ? base : base.filter(r => r["학과"] === dept);
+  const m = {};
+  rows.forEach(r => {
+    const k = (r["학과"]||"")+"§"+(r["과목코드"]||"")+"§"+(r["학년"]||"")+"§"+(r["과목명"]||"");
+    if (!m[k]) m[k] = { 학과:r["학과"], 과목명:r["과목명"], 학년:r["학년"], sections:[] };
+    m[k].sections.push({ 반:r["수강반"], 교수:r["교수명"], done:isDone(r["평가여부"]) });
+  });
+  return Object.values(m).sort((a,b) =>
+    String(a.학년).localeCompare(String(b.학년)) || String(a.과목명).localeCompare(String(b.과목명))
+  );
+}
+
+function renderCards() {
+  const base = trackFilteredData();
+  const ds = deptStats();
+  const total = base.length;
+  const done = base.filter(r => isDone(r["평가여부"])).length;
+  const rate = pct(done, total);
+  const trackLabel = curTrack === "전체" ? "전체 과정" : curTrack;
+  const cards = [
+    { label:"총 강좌 수 ("+trackLabel+")", val:total.toLocaleString()+"개", sub:ds.length+"개 학과", c:"#0F2B56", bg:"#EBF4FE" },
+    { label:"CQI 완료", val:done.toLocaleString()+"개", sub:"전체의 "+rate+"%", c:"#1A9B5C", bg:"#F0FDF4" },
+    { label:"미실시 강좌", val:(total-done).toLocaleString()+"개", sub:"입력 대기중", c:"#D93025", bg:"#FEF2F2" },
+    { label:"전체 실시율", val:rate+"%", sub:done+" / "+total, c:rateColor(rate), bg:"#FFFBEB" }
+  ];
+  document.getElementById("cards").innerHTML = cards.map(c =>
+    '<div class="card" style="background:'+c.bg+';border-color:'+c.c+'20;">'+
+    '<div class="c-label">'+c.label+'</div>'+
+    '<div class="c-val" style="color:'+c.c+';">'+c.val+'</div>'+
+    '<div class="c-sub">'+c.sub+'</div></div>'
+  ).join("");
+}
+
+function renderSidebar() {
+  const ds = deptStats();
+  document.getElementById("btnAll").style.display = curDept === "전체" ? "none" : "block";
+  document.getElementById("deptList").innerHTML = ds.map(d =>
+    '<div class="dept-item '+(curDept===d.name?"active":"")+'" onclick="selectDept(\''+d.name.replace(/'/g,"\\'")+'\')">'+
+    '<div class="dept-row1"><span class="dept-name">'+d.name+'</span>'+
+    '<span class="dept-rate" style="color:'+rateColor(d.rate)+';">'+d.rate+'%</span></div>'+
+    '<div class="bar"><div style="width:'+d.rate+'%;min-width:'+(d.rate>0?3:0)+'px;background:'+rateColor(d.rate)+';"></div></div>'+
+    '<div class="dept-cnt">완료 '+d.done+' / '+d.total+'개</div></div>'
+  ).join("");
+}
+
+function renderMain() {
+  const el = document.getElementById("mainPanel");
+  if (curDept === "전체") { renderOverview(el); return; }
+
+  const subjects = subjectsOf(curDept);
+  const ds = deptStats().find(d => d.name === curDept);
+  const shown = undoneOnly ? subjects.filter(s => s.sections.some(x => !x.done)) : subjects;
+  const undoneCount = subjects.filter(s => s.sections.some(x => !x.done)).length;
+  const ds_opts = deptStats().map(d => '<option '+(d.name===curDept?"selected":"")+'>'+d.name+'</option>').join("");
+
+  let rows = shown.map(subj => {
+    const sDone = subj.sections.filter(s=>s.done).length, sTotal = subj.sections.length;
+    const all = sDone===sTotal, none = sDone===0;
+    const tags = subj.sections.map(s =>
+      '<span class="tag '+(s.done?"done":"undone")+'" title="'+s.반+'반 · '+s.교수+'">'+s.반+' '+s.교수+'</span>'
+    ).join("");
+    const res = all ? '<span class="res-done">✓ 완료</span>'
+              : none ? '<span class="res-undone">미실시</span>'
+              : '<span class="res-part">'+sDone+'/'+sTotal+' 부분</span>';
+    return '<tr><td class="subj-name">'+subj.과목명+'</td><td style="color:#6B7280;">'+subj.학년+'학년</td>'+
+           '<td><div class="tags-wrap">'+tags+'</div></td><td>'+res+'</td></tr>';
+  }).join("");
+  if (!shown.length) rows = '<tr><td colspan="4" class="empty">'+(undoneOnly?"🎉 모든 과목이 완료되었습니다!":"데이터가 없습니다")+'</td></tr>';
+
+  el.innerHTML =
+    '<div class="main-head"><div>'+
+      '<h2>'+curDept+' 교과목 현황</h2>'+
+      '<div class="meta">총 '+ds.total+'개 강좌 · <span style="color:#1A9B5C;font-weight:600;">완료 '+ds.done+'개</span> · '+
+      '<span style="color:#D93025;font-weight:600;">미실시 '+ds.undone+'개</span> · 실시율 <strong style="color:'+rateColor(ds.rate)+';">'+ds.rate+'%</strong></div>'+
+    '</div><div class="controls">'+
+      '<select onchange="selectDept(this.value)"><option value="전체">전체 학과</option>'+ds_opts+'</select>'+
+      '<button class="btn '+(undoneOnly?"active":"")+'" onclick="toggleUndone()">🔴 미실시만 ('+undoneCount+')</button>'+
+      '<button class="btn btn-print" onclick="printDept()">🖨️ 미실시 인쇄</button>'+
+    '</div></div>'+
+    '<div class="table-scroll"><table><thead><tr>'+
+    '<th style="width:30%;">과목명</th><th style="width:8%;">학년</th>'+
+    '<th style="width:47%;">수강반 · 교수 (초록=완료 / 빨강=미실시)</th><th style="width:15%;">결과</th>'+
+    '</tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+
+function renderOverview(el) {
+  const ds = deptStats();
+  const total = ds.reduce((s,d)=>s+d.total,0), done = ds.reduce((s,d)=>s+d.done,0);
+  const overall = pct(done,total);
+  el.innerHTML =
+    '<div style="margin-bottom:18px;"><h2 style="font-size:15px;font-weight:700;color:#0F2B56;margin-bottom:4px;">전체 학과 현황</h2>'+
+    '<div class="meta" style="font-size:13px;color:#6B7280;">학과 카드를 클릭하면 교과목 상세 현황을 볼 수 있습니다</div></div>'+
+    '<div class="overview-prog"><div style="display:flex;justify-content:space-between;margin-bottom:10px;">'+
+    '<span style="font-size:13px;font-weight:600;color:#374151;">전체 진행률</span>'+
+    '<span style="font-size:14px;font-weight:800;color:'+rateColor(overall)+';">'+overall+'%</span></div>'+
+    '<div style="height:10px;background:#E5E7EB;border-radius:5px;overflow:hidden;"><div style="height:100%;width:'+overall+'%;background:linear-gradient(90deg,#1A9B5C,#22D97A);border-radius:5px;"></div></div>'+
+    '<div style="display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:#9CA3AF;"><span>완료 '+done.toLocaleString()+'개</span><span>미실시 '+(total-done).toLocaleString()+'개</span></div></div>'+
+    '<div class="ov-grid">'+ds.map(d =>
+      '<div class="ov-card" onclick="selectDept(\''+d.name.replace(/'/g,"\\'")+'\')">'+
+      '<div class="ov-name">'+d.name+'</div>'+
+      '<div class="bar" style="margin-bottom:8px;"><div style="width:'+d.rate+'%;min-width:'+(d.rate>0?3:0)+'px;background:'+rateColor(d.rate)+';"></div></div>'+
+      '<div class="ov-foot"><span class="ov-rate" style="color:'+rateColor(d.rate)+';">'+d.rate+'%</span>'+
+      '<span class="ov-cnt">'+d.done+'/'+d.total+'개</span></div></div>'
+    ).join("")+'</div>';
+}
+
+function printDept() {
+  if (curDept === "전체") { alert("학과를 먼저 선택해 주세요."); return; }
+  const subjects = subjectsOf(curDept);
+  const ds = deptStats().find(d => d.name === curDept);
+  const undoneSubjects = subjects.filter(s => s.sections.some(x => !x.done));
+  const updateInfo = document.getElementById("updateInfo").textContent.replace("최종 업데이트","").trim();
+
+  let rows = undoneSubjects.map(subj => {
+    const undoneSecs = subj.sections.filter(s => !s.done);
+    const tags = undoneSecs.map(s => '<span class="tag undone">'+s.반+'반 · '+s.교수+'</span>').join(" ");
+    return '<tr><td>'+subj.과목명+'</td><td>'+subj.학년+'학년</td><td>'+tags+'</td><td style="text-align:center;">'+undoneSecs.length+'개</td></tr>';
+  }).join("");
+  if (!undoneSubjects.length) rows = '<tr><td colspan="4" style="text-align:center;padding:30px;">미실시 과목이 없습니다.</td></tr>';
+
+  document.getElementById("printArea").innerHTML =
+    '<div class="pr-head"><div class="pr-title">'+curDept+' 교과목 CQI 미실시 현황</div>'+
+    '<div class="pr-sub">대구보건대학교 직업교육혁신센터 · '+(curTrack==="전체"?"전체 과정":curTrack)+' · 2026학년도 1학기 · 최종 업데이트 '+updateInfo+'</div></div>'+
+    '<div class="pr-summary">총 '+ds.total+'개 강좌 중 <strong style="color:#D93025;">미실시 '+ds.undone+'개</strong> '+
+    '(실시율 '+ds.rate+'%) · 아래는 미실시 분반 목록입니다.</div>'+
+    '<table><thead><tr><th style="width:34%;">과목명</th><th style="width:10%;">학년</th>'+
+    '<th style="width:46%;">미실시 분반 · 교수</th><th style="width:10%;">미실시</th></tr></thead><tbody>'+rows+'</tbody></table>';
+
+  window.print();
+}
+
+function selectTrack(t) { curTrack = t; curDept = "전체"; undoneOnly = false; buildLayout(); render(); }
+function selectDept(d) { curDept = (d === curDept) ? "전체" : d; undoneOnly = false; render(); }
+function toggleUndone() { undoneOnly = !undoneOnly; renderMain(); }
+function render() { renderCards(); renderSidebar(); renderMain(); }
+
+loadData();
+</script>
+</body>
+</html>
