@@ -343,15 +343,17 @@ function buildLayout() {
 
 function deptStats() {
   const m = {};
+  const order = []; // 엑셀에 나온 학과 순서 그대로 유지
   trackFilteredData().forEach(r => {
     const d = r["학과"] || "미분류";
-    if (!m[d]) m[d] = { total:0, done:0 };
+    if (!m[d]) { m[d] = { total:0, done:0 }; order.push(d); }
     m[d].total++;
     if (isDone(r["평가여부"])) m[d].done++;
   });
-  return Object.entries(m).map(([name,v]) => ({
-    name, total:v.total, done:v.done, undone:v.total-v.done, rate:pct(v.done,v.total)
-  })).sort((a,b) => b.total-a.total);
+  return order.map(name => ({
+    name, total:m[name].total, done:m[name].done,
+    undone:m[name].total-m[name].done, rate:pct(m[name].done,m[name].total)
+  }));
 }
 
 function profsOfDept(dept) {
@@ -589,7 +591,9 @@ function printDept() {
 
 function showLinks() {
   const base = window.location.href.split('?')[0];
-  const depts = [...new Set(DATA.map(r => r["학과"]))].sort();
+  // 엑셀 원본 순서 유지
+  const seen = new Set();
+  const depts = DATA.map(r => r["학과"]).filter(d => d && !seen.has(d) && seen.add(d));
   document.getElementById("linkList").innerHTML = depts.map((d, i) => {
     const url = base + '?dept=' + encodeURIComponent(d);
     return '<div class="link-row">'+
