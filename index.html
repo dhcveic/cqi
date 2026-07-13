@@ -82,6 +82,14 @@
   tbody td { padding: 9px 10px; border-bottom: 1px solid #F3F4F6; }
   tbody tr:nth-child(even) { background: #FAFAFA; }
   .subj-name { color: #111827; font-weight: 500; }
+  .track-badge { display:inline-block; padding:1px 6px; border-radius:4px; font-size:10px; font-weight:600; margin-left:5px; vertical-align:1px; white-space:nowrap; }
+  .track-badge.b-major { background:#F5F3FF; color:#6D28D9; border:1px solid #DDD6FE; }
+  .track-badge.b-track { background:#ECFEFF; color:#0E7490; border:1px solid #A5F3FC; }
+  .search-input {
+    padding: 7px 12px; border-radius: 8px; border: 1px solid #E5E7EB;
+    font-size: 13px; color: #374151; width: 150px; font-family: inherit;
+  }
+  .search-input:focus { outline: none; border-color: #93C5FD; }
   .tag { padding: 2px 7px; border-radius: 4px; font-size: 11px; user-select: none; display: inline-block; }
   .tag.done { background: #DCFCE7; color: #15803D; border: 1px solid #BBF7D0; }
   .tag.undone { background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; }
@@ -224,7 +232,9 @@ let TRACK_STAMP = {};       // { 트랙명: 마지막 수정시각 문자열 }
 let curTrack = "전체";
 let curDept = "전체";
 let curProf = "";           // 선택된 교수명 ("" = 전체)
+let curSearch = "";         // 과목명 검색어
 let undoneOnly = false;
+let CURRENT_SUBJECTS = [];  // 현재 렌더링된 학과의 과목 목록 (검색용)
 
 const isDone = v => String(v||"").trim().toUpperCase() === "O";
 const pct = (d,t) => t ? +(d/t*100).toFixed(1) : 0;
@@ -473,20 +483,20 @@ function renderMain() {
   if (curProf) subjRows = subjRows.filter(r => r["교수명"] === curProf);
   const m = {};
   subjRows.forEach(r => {
-    const k = (r["학과"]||"")+"§"+(r["과목코드"]||"")+"§"+(r["학년"]||"")+"§"+(r["과목명"]||"");
-    if (!m[k]) m[k] = { 과목명:r["과목명"], 학년:r["학년"], sections:[] };
+    const k = (r["과정"]||"")+"§"+(r["전공"]||"")+"§"+(r["과목코드"]||"")+"§"+(r["학년"]||"")+"§"+(r["과목명"]||"");
+    if (!m[k]) m[k] = { 과목명:r["과목명"], 학년:r["학년"], 전공:r["전공"]||"", 과정:r["과정"]||"", sections:[] };
     m[k].sections.push({ 반:r["수강반"], 교수:r["교수명"], done:isDone(r["평가여부"]) });
   });
   const subjects = Object.values(m).sort((a,b) =>
     String(a.학년).localeCompare(String(b.학년)) || String(a.과목명).localeCompare(String(b.과목명))
   );
+  CURRENT_SUBJECTS = subjects;
 
   // 요약 통계
   const profRows = curProf ? deptRowsAll.filter(r => r["교수명"] === curProf) : deptRowsAll;
   const profTotal = profRows.length, profDone = profRows.filter(r => isDone(r["평가여부"])).length;
   const profUndone = profTotal - profDone, profRate = pct(profDone, profTotal);
 
-  const shown = undoneOnly ? subjects.filter(s => s.sections.some(x => !x.done)) : subjects;
   const undoneSubjectCount = subjects.filter(s => s.sections.some(x => !x.done)).length;
 
   const metaText = curProf
@@ -499,25 +509,12 @@ function renderMain() {
     deptStats().map(d => '<option '+(d.name===activeDept?"selected":"")+'>'+d.name+'</option>').join("")+
     '</select>';
 
-  let rows = shown.map(subj => {
-    const sDone = subj.sections.filter(s=>s.done).length, sTotal = subj.sections.length;
-    const all = sDone===sTotal, none = sDone===0;
-    const tags = subj.sections.map(s =>
-      '<span class="tag '+(s.done?"done":"undone")+'" title="'+s.반+'반 · '+s.교수+'">'+s.반+' '+s.교수+'</span>'
-    ).join("");
-    const res = all ? '<span class="res-done">✓ 완료</span>'
-              : none ? '<span class="res-undone">미실시</span>'
-              : '<span class="res-part">'+sDone+'/'+sTotal+' 부분</span>';
-    return '<tr><td class="subj-name">'+subj.과목명+'</td><td style="color:#6B7280;">'+subj.학년+'학년</td>'+
-           '<td><div class="tags-wrap">'+tags+'</div></td><td>'+res+'</td></tr>';
-  }).join("");
-  if (!shown.length) rows = '<tr><td colspan="4" class="empty">'+(undoneOnly?"🎉 모든 과목이 완료되었습니다!":"데이터가 없습니다")+'</td></tr>';
-
   el.innerHTML =
     '<div class="main-head"><div>'+
       '<h2>'+activeDept+' 교과목 현황</h2>'+
       '<div class="meta">'+metaText+'</div>'+
     '</div><div class="controls">'+
+      '<input type="text" class="search-input" placeholder="🔍 과목명 검색" value="'+curSearch.replace(/"/g,"&quot;")+'" oninput="searchSubjects(this.value)">'+
       deptSelector+
       '<button class="btn '+(undoneOnly?"active":"")+'" onclick="toggleUndone()">🔴 미실시만 ('+undoneSubjectCount+')</button>'+
       '<button class="btn btn-print" onclick="printDept()">🖨️ 미실시 인쇄</button>'+
@@ -526,7 +523,58 @@ function renderMain() {
     '<div class="table-scroll"><table><thead><tr>'+
     '<th style="width:30%;">과목명</th><th style="width:8%;">학년</th>'+
     '<th style="width:47%;">수강반 · 교수 (초록=완료 / 빨강=미실시)</th><th style="width:15%;">결과</th>'+
-    '</tr></thead><tbody>'+rows+'</tbody></table></div>';
+    '</tr></thead><tbody id="subjTbody">'+buildRowsHtml()+'</tbody></table></div>';
+}
+
+// 표 행 HTML 생성 (undoneOnly + 검색어 반영)
+function buildRowsHtml() {
+  let shown = CURRENT_SUBJECTS;
+  if (undoneOnly) shown = shown.filter(s => s.sections.some(x => !x.done));
+  if (curSearch) {
+    const q = curSearch.toLowerCase();
+    shown = shown.filter(s => String(s.과목명).toLowerCase().includes(q));
+  }
+
+  let rows = shown.map(subj => {
+    const sDone = subj.sections.filter(s=>s.done).length, sTotal = subj.sections.length;
+    const all = sDone===sTotal, none = sDone===0;
+
+    // 미실시만 모드: 완료 분반 태그는 숨기고 미실시만 표시
+    const visibleSecs = undoneOnly ? subj.sections.filter(s => !s.done) : subj.sections;
+    const tags = visibleSecs.map(s =>
+      '<span class="tag '+(s.done?"done":"undone")+'" title="'+s.반+'반 · '+s.교수+'">'+s.반+' '+s.교수+'</span>'
+    ).join("");
+
+    const res = undoneOnly
+      ? '<span class="res-undone">미실시 '+(sTotal-sDone)+'개</span>'
+      : (all ? '<span class="res-done">✓ 완료</span>'
+        : none ? '<span class="res-undone">미실시</span>'
+        : '<span class="res-part">'+sDone+'/'+sTotal+' 부분</span>');
+
+    // 전공(소단위 과정) 뱃지 + 과정 뱃지
+    let badges = "";
+    if (subj.전공 && subj.전공 !== "학사학위 전공심화과정") {
+      badges += '<span class="track-badge b-major">'+subj.전공+'</span>';
+    }
+    if ((LOCK_DEPT || curTrack === "전체") && subj.과정 && subj.과정 !== "일반과정") {
+      badges += '<span class="track-badge b-track">'+subj.과정+'</span>';
+    }
+
+    return '<tr><td class="subj-name">'+subj.과목명+badges+'</td><td style="color:#6B7280;">'+subj.학년+'학년</td>'+
+           '<td><div class="tags-wrap">'+tags+'</div></td><td>'+res+'</td></tr>';
+  }).join("");
+
+  if (!shown.length) rows = '<tr><td colspan="4" class="empty">'+
+    (curSearch ? "🔍 검색 결과가 없습니다"
+    : undoneOnly ? "🎉 모든 과목이 완료되었습니다!" : "데이터가 없습니다")+'</td></tr>';
+  return rows;
+}
+
+// 검색: 표만 갱신 (입력 포커스 유지)
+function searchSubjects(v) {
+  curSearch = v;
+  const tbody = document.getElementById("subjTbody");
+  if (tbody) tbody.innerHTML = buildRowsHtml();
 }
 
 function renderOverview(el) {
@@ -566,17 +614,19 @@ function printDept() {
   if (curProf) subjRows = subjRows.filter(r => r["교수명"] === curProf);
   const sm = {};
   subjRows.forEach(r => {
-    const k = (r["과목코드"]||"")+"§"+(r["학년"]||"")+"§"+(r["과목명"]||"");
-    if (!sm[k]) sm[k] = { 과목명:r["과목명"], 학년:r["학년"], secs:[] };
+    const k = (r["과정"]||"")+"§"+(r["전공"]||"")+"§"+(r["과목코드"]||"")+"§"+(r["학년"]||"")+"§"+(r["과목명"]||"");
+    if (!sm[k]) sm[k] = { 과목명:r["과목명"], 학년:r["학년"], 전공:r["전공"]||"", secs:[] };
     sm[k].secs.push(r["수강반"]+"반 · "+r["교수명"]);
   });
   const undoneSubjects = Object.values(sm).sort((a,b) => String(a.학년).localeCompare(String(b.학년)) || a.과목명.localeCompare(b.과목명));
 
-  let rows = undoneSubjects.map(s =>
-    '<tr><td>'+s.과목명+'</td><td>'+s.학년+'학년</td><td>'+
+  let rows = undoneSubjects.map(s => {
+    const majorTxt = (s.전공 && s.전공 !== "학사학위 전공심화과정")
+      ? '<br><span style="font-size:9px;color:#666;">('+s.전공+')</span>' : '';
+    return '<tr><td>'+s.과목명+majorTxt+'</td><td>'+s.학년+'학년</td><td>'+
     s.secs.map(t=>'<span class="tag undone">'+t+'</span>').join(" ")+
-    '</td><td style="text-align:center;">'+s.secs.length+'개</td></tr>'
-  ).join("");
+    '</td><td style="text-align:center;">'+s.secs.length+'개</td></tr>';
+  }).join("");
   if (!rows) rows = '<tr><td colspan="4" style="text-align:center;padding:30px;">미실시 과목이 없습니다.</td></tr>';
 
   document.getElementById("printArea").innerHTML =
@@ -613,8 +663,8 @@ function copyLink(id, btn) {
   });
 }
 
-function selectTrack(t) { curTrack = t; curDept = "전체"; curProf = ""; undoneOnly = false; buildLayout(); render(); }
-function selectDept(d) { curDept = (d === curDept) ? "전체" : d; curProf = ""; undoneOnly = false; render(); }
+function selectTrack(t) { curTrack = t; curDept = "전체"; curProf = ""; curSearch = ""; undoneOnly = false; buildLayout(); render(); }
+function selectDept(d) { curDept = (d === curDept) ? "전체" : d; curProf = ""; curSearch = ""; undoneOnly = false; render(); }
 function selectProf(p) { curProf = (p === curProf) ? "" : p; undoneOnly = false; renderMain(); }
 function toggleUndone() { undoneOnly = !undoneOnly; renderMain(); }
 function render() { renderCards(); renderSidebar(); renderMain(); }
