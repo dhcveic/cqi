@@ -244,6 +244,7 @@ let curDept = "전체";
 let curProf = "";           // 선택된 교수명 ("" = 전체)
 let curSearch = "";         // 과목명 검색어 (학과 화면)
 let ovSearch = "";          // 전체 화면 검색어
+let ovUndoneOnly = false;   // 전체 화면 미실시 목록 모드
 let undoneOnly = false;
 let CURRENT_SUBJECTS = [];  // 현재 렌더링된 학과의 과목 목록 (검색용)
 
@@ -602,13 +603,91 @@ function searchSubjects(v) {
 }
 
 function renderOverview(el) {
+  // 전체 미실시 강좌 수 (버튼 표시용)
+  const undoneTotal = trackFilteredData().filter(r => !isDone(r["평가여부"])).length;
   el.innerHTML =
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:10px;">'+
     '<div><h2 style="font-size:15px;font-weight:700;color:#0F2B56;margin-bottom:4px;">전체 학과 현황</h2>'+
     '<div class="meta" style="font-size:13px;color:#6B7280;">학과 카드를 클릭하면 교과목 상세 현황을 볼 수 있습니다</div></div>'+
-    '<input type="text" class="search-input" style="width:220px;" placeholder="🔍 과목명 · 교수명 전체 검색" value="'+ovSearch.replace(/"/g,"&quot;")+'" oninput="searchOverview(this.value)">'+
-    '</div>'+
-    '<div id="ovContent">'+(ovSearch.trim() ? buildOvSearchResults() : buildOvNormal())+'</div>';
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
+    '<input type="text" class="search-input" style="width:200px;" placeholder="🔍 과목명 · 교수명 전체 검색" value="'+ovSearch.replace(/"/g,"&quot;")+'" oninput="searchOverview(this.value)">'+
+    '<button class="btn '+(ovUndoneOnly?"active":"")+'" onclick="toggleOvUndone()">🔴 전체 미실시 목록 ('+undoneTotal.toLocaleString()+')</button>'+
+    (ovUndoneOnly ? '<button class="btn btn-print" onclick="printOvUndone()">🖨️ 인쇄</button>' : '')+
+    '</div></div>'+
+    '<div id="ovContent">'+
+    (ovUndoneOnly ? buildOvUndoneList()
+      : ovSearch.trim() ? buildOvSearchResults() : buildOvNormal())+
+    '</div>';
+}
+
+// 전체 미실시 목록 (학과·과정 전체에서 미실시만 추림)
+function buildOvUndoneList() {
+  const base = trackFilteredData().filter(r => !isDone(r["평가여부"]));
+  if (!base.length) return '<div class="empty">🎉 모든 강좌가 완료되었습니다!</div>';
+
+  // 학과 원본 순서 유지 + 과목 그룹핑
+  const m = {}; const order = [];
+  base.forEach(r => {
+    const k = (r["학과"]||"")+"§"+(r["과정"]||"")+"§"+(r["전공"]||"")+"§"+(r["과목코드"]||"")+"§"+(r["학년"]||"")+"§"+(r["과목명"]||"");
+    if (!m[k]) { m[k] = { 학과:r["학과"], 과목명:r["과목명"], 학년:r["학년"], 전공:r["전공"]||"", 과정:r["과정"]||"", secs:[] }; order.push(k); }
+    m[k].secs.push({ 반:r["수강반"], 교수:r["교수명"] });
+  });
+  const list = order.map(k => m[k]);
+
+  const rows = list.map(s => {
+    const tags = s.secs.map(x => '<span class="tag undone">'+x.반+' '+x.교수+'</span>').join("");
+    let badges = "";
+    if (s.전공 && s.전공 !== "학사학위 전공심화과정") badges += '<span class="track-badge b-major">'+s.전공+'</span>';
+    if (curTrack === "전체" && s.과정 && s.과정 !== "일반과정") badges += '<span class="track-badge b-track">'+s.과정+'</span>';
+    return '<tr>'+
+      '<td style="color:#6B7280;font-size:12px;">'+s.학과+'</td>'+
+      '<td class="subj-name">'+s.과목명+badges+'</td>'+
+      '<td style="color:#6B7280;">'+s.학년+'학년</td>'+
+      '<td><div class="tags-wrap">'+tags+'</div></td>'+
+      '<td style="text-align:center;"><span class="res-undone">'+s.secs.length+'개</span></td></tr>';
+  }).join("");
+
+  return '<div style="font-size:13px;color:#6B7280;margin-bottom:10px;">미실시 <strong style="color:#D93025;">'+base.length.toLocaleString()+'개 강좌</strong> · '+list.length.toLocaleString()+'개 과목</div>'+
+    '<div class="table-scroll"><table><thead><tr>'+
+    '<th style="width:16%;">학과</th><th style="width:26%;">과목명</th><th style="width:7%;">학년</th>'+
+    '<th style="width:41%;">미실시 분반 · 교수</th><th style="width:10%;">미실시</th>'+
+    '</tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+
+function toggleOvUndone() {
+  ovUndoneOnly = !ovUndoneOnly;
+  if (ovUndoneOnly) ovSearch = "";
+  renderMain();
+}
+
+// 전체 미실시 목록 인쇄
+function printOvUndone() {
+  const base = trackFilteredData().filter(r => !isDone(r["평가여부"]));
+  const m = {}; const order = [];
+  base.forEach(r => {
+    const k = (r["학과"]||"")+"§"+(r["과정"]||"")+"§"+(r["전공"]||"")+"§"+(r["과목코드"]||"")+"§"+(r["학년"]||"")+"§"+(r["과목명"]||"");
+    if (!m[k]) { m[k] = { 학과:r["학과"], 과목명:r["과목명"], 학년:r["학년"], 전공:r["전공"]||"", secs:[] }; order.push(k); }
+    m[k].secs.push(r["수강반"]+"반 · "+r["교수명"]);
+  });
+  const list = order.map(k => m[k]);
+  const updateInfo = document.getElementById("updateInfo").innerHTML.replace(/<[^>]+>/g,"").replace("최종 업데이트","").trim();
+
+  let rows = list.map(s => {
+    const majorTxt = (s.전공 && s.전공 !== "학사학위 전공심화과정")
+      ? '<br><span style="font-size:9px;color:#666;">('+s.전공+')</span>' : '';
+    return '<tr><td>'+s.학과+'</td><td>'+s.과목명+majorTxt+'</td><td>'+s.학년+'학년</td><td>'+
+      s.secs.map(t=>'<span class="tag undone">'+t+'</span>').join(" ")+
+      '</td><td style="text-align:center;">'+s.secs.length+'개</td></tr>';
+  }).join("");
+  if (!rows) rows = '<tr><td colspan="5" style="text-align:center;padding:30px;">미실시 과목이 없습니다.</td></tr>';
+
+  document.getElementById("printArea").innerHTML =
+    '<div class="pr-head"><div class="pr-title">전체 학과 교과목 CQI 미실시 현황</div>'+
+    '<div class="pr-sub">대구보건대학교 직업교육혁신센터 · '+(curTrack==="전체"?"전체 과정":curTrack)+' · 2026학년도 1학기 · 최종 업데이트 '+updateInfo+'</div></div>'+
+    '<div class="pr-summary">전체 미실시 <strong style="color:#D93025;">'+base.length.toLocaleString()+'개 강좌</strong> ('+list.length.toLocaleString()+'개 과목) · 아래는 학과별 미실시 분반 목록입니다.</div>'+
+    '<table><thead><tr><th style="width:14%;">학과</th><th style="width:26%;">과목명</th><th style="width:8%;">학년</th>'+
+    '<th style="width:42%;">미실시 분반 · 교수</th><th style="width:10%;">미실시</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  window.print();
 }
 
 // 전체 화면: 기본 뷰 (진행률 + 미니 차트 + 학과 그리드)
@@ -720,8 +799,9 @@ function buildOvSearchResults() {
 
 function searchOverview(v) {
   ovSearch = v;
+  if (v.trim()) ovUndoneOnly = false;
   const c = document.getElementById("ovContent");
-  if (c) c.innerHTML = v.trim() ? buildOvSearchResults() : buildOvNormal();
+  if (c) c.innerHTML = ovUndoneOnly ? buildOvUndoneList() : (v.trim() ? buildOvSearchResults() : buildOvNormal());
 }
 
 function printDept() {
@@ -789,8 +869,8 @@ function copyLink(id, btn) {
   });
 }
 
-function selectTrack(t) { curTrack = t; curDept = "전체"; curProf = ""; curSearch = ""; ovSearch = ""; undoneOnly = false; buildLayout(); render(); }
-function selectDept(d) { curDept = (d === curDept) ? "전체" : d; curProf = ""; curSearch = ""; ovSearch = ""; undoneOnly = false; render(); }
+function selectTrack(t) { curTrack = t; curDept = "전체"; curProf = ""; curSearch = ""; ovSearch = ""; ovUndoneOnly = false; undoneOnly = false; buildLayout(); render(); }
+function selectDept(d) { curDept = (d === curDept) ? "전체" : d; curProf = ""; curSearch = ""; ovSearch = ""; ovUndoneOnly = false; undoneOnly = false; render(); }
 function selectProf(p) { curProf = (p === curProf) ? "" : p; undoneOnly = false; renderMain(); }
 function toggleUndone() { undoneOnly = !undoneOnly; renderMain(); }
 function render() { renderCards(); renderSidebar(); renderMain(); }
